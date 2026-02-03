@@ -1,0 +1,8 @@
+# dom-sim
+
+Minimal starter UI for pasting HTML + CSS (future: labeled DOM tree).
+
+## Quickstart
+
+1) Install deps: `npm install`
+2) Run dev server: `npm run dev`

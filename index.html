@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dom-sim</title>
+  </head>
+  <body>
+    <main class="app" aria-label="DOM Simulator">
+      <section class="editor" aria-label="Input editors">
+        <div class="panel">
+          <div class="header">
+            <div class="title">
+              <label class="label" for="html-input">HTML</label>
+              <button
+                id="html-file-btn"
+                class="icon-button"
+                type="button"
+                aria-label="Load HTML file"
+                title="Load .html file"
+              >
+                <svg
+                  class="icon"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1Zm-7 16a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1Z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <textarea
+            id="html-input"
+            class="textarea"
+            spellcheck="false"
+            placeholder="Drop, paste, or type HTML here…"
+          ></textarea>
+        </div>
+
+        <div class="panel">
+          <div class="header">
+            <div class="title">
+              <label class="label" for="css-input">CSS</label>
+              <button
+                id="css-file-btn"
+                class="icon-button"
+                type="button"
+                aria-label="Load CSS file"
+                title="Load .css file"
+              >
+                <svg
+                  class="icon"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill="currentColor"
+                    d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1Zm-7 16a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1Z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <textarea
+            id="css-input"
+            class="textarea"
+            spellcheck="false"
+            placeholder="Drop, paste, or type CSS here…"
+          ></textarea>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
