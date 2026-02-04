@@ -271,17 +271,105 @@ body {
 
 .tree-row {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   padding: 4px 8px;
   border-radius: 10px;
   border: 1px solid transparent;
   color: rgba(255, 255, 255, 0.92);
+  flex-wrap: wrap;
 }
 
 .tree-row:hover {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+.tree-metrics {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-left: 6px;
+}
+
+.tree-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tree-chip--computed {
+  opacity: 0.62;
+}
+
+.tree-chip--declared {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tree-chip-key {
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.tree-chip-sep {
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 2px;
+}
+
+.tree-chip-val {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.tree-metric {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.tree-metric--neutral {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.tree-metric--low {
+  color: rgba(88, 255, 164, 0.92);
+  border-color: rgba(88, 255, 164, 0.22);
+  background: rgba(88, 255, 164, 0.06);
+}
+
+.tree-metric--med {
+  color: rgba(255, 212, 92, 0.92);
+  border-color: rgba(255, 212, 92, 0.22);
+  background: rgba(255, 212, 92, 0.06);
+}
+
+.tree-metric--high {
+  color: rgba(255, 96, 96, 0.92);
+  border-color: rgba(255, 96, 96, 0.22);
+  background: rgba(255, 96, 96, 0.06);
 }
 
 .tree-summary {
@@ -331,6 +419,17 @@ details[open] > summary.tree-summary::before {
 
 .tree-text {
   color: rgba(255, 255, 255, 0.76);
+}
+
+.dom-sim-sandbox {
+  position: fixed;
+  left: -2400px;
+  top: 0;
+  width: 1200px;
+  height: 800px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
 }
 
 @media (max-width: 900px) {

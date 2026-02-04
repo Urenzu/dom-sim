@@ -41,12 +41,30 @@ const treeMeta = document.querySelector<HTMLElement>("#tree-meta");
 
 type TreeNode = ElementTreeNode | TextTreeNode;
 
+type MetricLevel = "low" | "med" | "high";
+
+type LayoutChip = {
+  prop: string;
+  value: string;
+  title: string;
+  declared: boolean;
+};
+
+type LayoutSummary = {
+  chips: LayoutChip[];
+  rulesCount: number;
+  propsCount: number;
+  longhandsCount: number;
+  propsLevel: MetricLevel;
+};
+
 type ElementTreeNode = {
   type: "element";
   tag: string;
   id: string;
   classes: string[];
   children: TreeNode[];
+  layout?: LayoutSummary;
 };
 
 type TextTreeNode = {
@@ -54,15 +72,293 @@ type TextTreeNode = {
   text: string;
 };
 
+const LAYOUT_PROPS = [
+  "display",
+  "position",
+  "flex-direction",
+  "justify-content",
+  "align-items",
+  "gap"
+] as const;
+
+const LAYOUT_PROP_SET = new Set<string>(LAYOUT_PROPS);
+
 function normalizeTextNodeValue(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function elementToTree(element: Element): ElementTreeNode {
+type StyleContext = {
+  win: Window;
+  rules: CSSStyleRule[];
+};
+
+type CssMatchStats = {
+  rulesMatched: number;
+  longhandsCount: number;
+  propGroups: Set<string>;
+  declaredLayoutProps: Set<string>;
+  inlinePresent: boolean;
+};
+
+function classifyPropsCount(propsCount: number): MetricLevel {
+  if (propsCount <= 8) return "low";
+  if (propsCount <= 18) return "med";
+  return "high";
+}
+
+function normalizePropertyGroup(prop: string) {
+  if (!prop) return prop;
+
+  if (prop.startsWith("padding-")) return "padding";
+  if (prop.startsWith("margin-")) return "margin";
+
+  if (prop === "border-radius" || (prop.startsWith("border-") && prop.endsWith("radius"))) {
+    return "border-radius";
+  }
+
+  if (prop === "border" || prop.startsWith("border-")) return "border";
+  if (prop === "background" || prop.startsWith("background-")) return "background";
+  if (prop === "font" || prop.startsWith("font-")) return "font";
+  if (prop === "transition" || prop.startsWith("transition-")) return "transition";
+  if (prop === "animation" || prop.startsWith("animation-")) return "animation";
+
+  return prop;
+}
+
+function extractActiveStyleRules(
+  sheet: CSSStyleSheet | null,
+  win: Window
+): CSSStyleRule[] {
+  if (!sheet) return [];
+
+  const out: CSSStyleRule[] = [];
+
+  const walk = (rules: CSSRuleList) => {
+    for (const rule of Array.from(rules)) {
+      if (rule.type === CSSRule.STYLE_RULE) {
+        out.push(rule as CSSStyleRule);
+        continue;
+      }
+
+      if (rule instanceof CSSMediaRule) {
+        const mediaText = rule.media?.mediaText ?? "";
+        if (!mediaText || win.matchMedia(mediaText).matches) walk(rule.cssRules);
+        continue;
+      }
+
+      if (rule instanceof CSSSupportsRule) {
+        let ok = true;
+        try {
+          ok = typeof CSS?.supports === "function" ? CSS.supports(rule.conditionText) : true;
+        } catch {
+          ok = true;
+        }
+        if (ok) walk(rule.cssRules);
+        continue;
+      }
+
+      const maybeGrouping = rule as unknown as { cssRules?: CSSRuleList };
+      if (maybeGrouping.cssRules) walk(maybeGrouping.cssRules);
+    }
+  };
+
+  try {
+    walk(sheet.cssRules);
+  } catch {
+    return [];
+  }
+
+  return out;
+}
+
+function getCssMatchStats(element: Element, ctx: StyleContext | null): CssMatchStats {
+  const propGroups = new Set<string>();
+  const declaredLayoutProps = new Set<string>();
+
+  if (!ctx) {
+    return {
+      rulesMatched: 0,
+      longhandsCount: 0,
+      propGroups,
+      declaredLayoutProps,
+      inlinePresent: false
+    };
+  }
+
+  let rulesMatched = 0;
+  let longhandsCount = 0;
+
+  for (const rule of ctx.rules) {
+    let matches = false;
+    try {
+      matches = element.matches(rule.selectorText);
+    } catch {
+      continue;
+    }
+    if (!matches) continue;
+
+    rulesMatched += 1;
+    const decl = rule.style;
+    for (let i = 0; i < decl.length; i += 1) {
+      const prop = decl.item(i);
+      if (!prop) continue;
+      longhandsCount += 1;
+      propGroups.add(normalizePropertyGroup(prop));
+      if (LAYOUT_PROP_SET.has(prop)) declaredLayoutProps.add(prop);
+    }
+  }
+
+  const inlineStyle = (element as HTMLElement).style;
+  const inlinePresent = Boolean(inlineStyle?.length);
+  if (inlineStyle?.length) {
+    for (let i = 0; i < inlineStyle.length; i += 1) {
+      const prop = inlineStyle.item(i);
+      if (!prop) continue;
+      longhandsCount += 1;
+      propGroups.add(normalizePropertyGroup(prop));
+      if (LAYOUT_PROP_SET.has(prop)) declaredLayoutProps.add(prop);
+    }
+  }
+
+  return { rulesMatched, longhandsCount, propGroups, declaredLayoutProps, inlinePresent };
+}
+
+function buildLayoutSummary(element: Element, ctx: StyleContext | null): LayoutSummary | undefined {
+  if (!ctx) return undefined;
+
+  const stats = getCssMatchStats(element, ctx);
+
+  const rulesCount = stats.rulesMatched + (stats.inlinePresent ? 1 : 0);
+  const propsCount = stats.propGroups.size;
+  const longhandsCount = stats.longhandsCount;
+  const propsLevel = classifyPropsCount(propsCount);
+
+  const computed = ctx.win.getComputedStyle(element);
+  const getValue = (prop: string) => computed.getPropertyValue(prop).trim();
+  const hasDecl = (prop: string) => stats.declaredLayoutProps.has(prop);
+
+  const chips: LayoutChip[] = [];
+
+  const displayValue = getValue("display");
+  chips.push({
+    prop: "display",
+    value: displayValue,
+    title: `display: ${displayValue}`,
+    declared: hasDecl("display")
+  });
+
+  const positionValue = getValue("position");
+  chips.push({
+    prop: "position",
+    value: positionValue,
+    title: `position: ${positionValue}`,
+    declared: hasDecl("position")
+  });
+
+  const isFlex = displayValue.includes("flex");
+  const isGrid = displayValue.includes("grid");
+
+  const pushIf = (prop: string, shouldShow: boolean) => {
+    if (!shouldShow) return;
+    const value = getValue(prop);
+    chips.push({
+      prop,
+      value,
+      title: `${prop}: ${value}`,
+      declared: hasDecl(prop)
+    });
+  };
+
+  pushIf("flex-direction", isFlex || hasDecl("flex-direction"));
+  pushIf("justify-content", isFlex || hasDecl("justify-content"));
+  pushIf("align-items", isFlex || hasDecl("align-items"));
+  pushIf("gap", isFlex || isGrid || hasDecl("gap"));
+
+  return { chips, rulesCount, propsCount, longhandsCount, propsLevel };
+}
+
+let sandboxEnvPromise: Promise<{
+  win: Window;
+  doc: Document;
+  styleEl: HTMLStyleElement;
+}> | null = null;
+
+function ensureSandboxEnv() {
+  if (sandboxEnvPromise) return sandboxEnvPromise;
+
+  sandboxEnvPromise = new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    frame.className = "dom-sim-sandbox";
+    frame.setAttribute("sandbox", "allow-same-origin");
+    frame.setAttribute("aria-hidden", "true");
+    frame.tabIndex = -1;
+
+    frame.addEventListener(
+      "load",
+      () => {
+        const win = frame.contentWindow;
+        const doc = frame.contentDocument;
+        const styleEl = doc?.getElementById("dom-sim-user-css") as
+          | HTMLStyleElement
+          | null;
+
+        if (!win || !doc || !styleEl) {
+          reject(new Error("Sandbox iframe failed to initialize."));
+          return;
+        }
+
+        resolve({ win, doc, styleEl });
+      },
+      { once: true }
+    );
+
+    frame.srcdoc = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src data:; font-src data:; connect-src 'none'; frame-src 'none'; style-src 'unsafe-inline';" />
+    <style id="dom-sim-user-css"></style>
+  </head>
+  <body></body>
+</html>`;
+
+    document.body.appendChild(frame);
+  });
+
+  return sandboxEnvPromise;
+}
+
+async function buildStyleContext(html: string, css: string) {
+  const env = await ensureSandboxEnv();
+
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+
+  env.styleEl.textContent = css;
+
+  env.doc.body.getAttributeNames().forEach((name) => env.doc.body.removeAttribute(name));
+  parsed.body
+    .getAttributeNames()
+    .forEach((name) => env.doc.body.setAttribute(name, parsed.body.getAttribute(name) ?? ""));
+
+  env.doc.body.innerHTML = parsed.body.innerHTML;
+
+  await new Promise<void>((resolve) => env.win.requestAnimationFrame(() => resolve()));
+
+  const sheet = env.styleEl.sheet as CSSStyleSheet | null;
+  return {
+    root: env.doc.body,
+    ctx: {
+      win: env.win,
+      rules: extractActiveStyleRules(sheet, env.win)
+    } satisfies StyleContext
+  };
+}
+
+function elementToTree(element: Element, ctx: StyleContext | null): ElementTreeNode {
   const children: TreeNode[] = [];
   element.childNodes.forEach((node) => {
     if (node.nodeType === Node.ELEMENT_NODE) {
-      children.push(elementToTree(node as Element));
+      children.push(elementToTree(node as Element, ctx));
       return;
     }
 
@@ -77,7 +373,8 @@ function elementToTree(element: Element): ElementTreeNode {
     tag: element.tagName.toLowerCase(),
     id: (element as HTMLElement).id ?? "",
     classes: [...element.classList],
-    children
+    children,
+    layout: children.length > 0 ? buildLayoutSummary(element, ctx) : undefined
   };
 }
 
@@ -127,6 +424,55 @@ function createElementRow(node: ElementTreeNode): DocumentFragment {
   return frag;
 }
 
+function createLayoutMetrics(layout: LayoutSummary): HTMLSpanElement {
+  const metrics = document.createElement("span");
+  metrics.className = "tree-metrics";
+
+  layout.chips.forEach((chip) => {
+    const el = document.createElement("span");
+    el.className = chip.declared ? "tree-chip tree-chip--declared" : "tree-chip tree-chip--computed";
+    el.title = chip.title;
+
+    const key = document.createElement("span");
+    key.className = "tree-chip-key";
+    key.textContent = chip.prop;
+
+    const sep = document.createElement("span");
+    sep.className = "tree-chip-sep";
+    sep.textContent = ":";
+
+    const value = document.createElement("span");
+    value.className = "tree-chip-val";
+    value.textContent = chip.value;
+
+    el.appendChild(key);
+    el.appendChild(sep);
+    el.appendChild(value);
+    metrics.appendChild(el);
+  });
+
+  const rules = document.createElement("span");
+  rules.className = "tree-metric tree-metric--neutral";
+  rules.textContent = `rules=${layout.rulesCount}`;
+  rules.title = "Matched selector rules (plus 1 if inline styles are present).";
+  metrics.appendChild(rules);
+
+  const props = document.createElement("span");
+  props.className = `tree-metric tree-metric--${layout.propsLevel}`;
+  props.textContent = `props=${layout.propsCount}`;
+  props.title = "Unique matched property groups (shorthands like border/background grouped).";
+  metrics.appendChild(props);
+
+  const longhands = document.createElement("span");
+  longhands.className = "tree-metric tree-metric--neutral";
+  longhands.textContent = `longhands=${layout.longhandsCount}`;
+  longhands.title =
+    "Expanded CSSOM longhand declarations across all matched rules (can be inflated by shorthands).";
+  metrics.appendChild(longhands);
+
+  return metrics;
+}
+
 function renderTreeNode(node: TreeNode, depth: number): HTMLLIElement {
   const li = document.createElement("li");
 
@@ -145,6 +491,7 @@ function renderTreeNode(node: TreeNode, depth: number): HTMLLIElement {
     const summary = document.createElement("summary");
     summary.className = "tree-row tree-summary";
     summary.appendChild(createElementRow(node));
+    if (node.layout) summary.appendChild(createLayoutMetrics(node.layout));
 
     const ul = document.createElement("ul");
     node.children.forEach((child) => {
@@ -164,11 +511,23 @@ function renderTreeNode(node: TreeNode, depth: number): HTMLLIElement {
   return li;
 }
 
-function renderTree(html: string) {
+async function renderTree(html: string, css: string) {
   if (!treeContainer) return;
 
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const rootNode = elementToTree(doc.body);
+  let root: Element;
+  let ctx: StyleContext | null = null;
+
+  try {
+    const sandbox = await buildStyleContext(html, css);
+    root = sandbox.root;
+    ctx = sandbox.ctx;
+  } catch {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    root = doc.body;
+    ctx = null;
+  }
+
+  const rootNode = elementToTree(root, ctx);
   const counts = countTreeNodes(rootNode);
 
   if (treeMeta) {
@@ -211,12 +570,12 @@ generateButton?.addEventListener("click", () => {
 });
 
 document.addEventListener(GENERATE_EVENT, (event) => {
-  const { html } = (event as CustomEvent<GenerateEventDetail>).detail ?? {
+  const { html, css } = (event as CustomEvent<GenerateEventDetail>).detail ?? {
     html: "",
     css: ""
   };
   if (!canGenerate(html)) return;
-  renderTree(html);
+  void renderTree(html, css);
 });
 
 syncGenerateButtonState();
