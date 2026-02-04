@@ -1,0 +1,2 @@
+- Maintain the styling to be sleek, black, modern.
+- We're constructing a html / css -> dom tree visualizer

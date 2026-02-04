@@ -75,6 +75,24 @@
             placeholder="Drop, paste, or type CSS here…"
           ></textarea>
         </div>
+
+        <div class="actions" aria-label="Generate DOM tree">
+          <button id="generate-btn" class="primary-button" type="button">
+            Generate Tree
+          </button>
+        </div>
+
+        <div class="panel tree-panel" aria-label="DOM tree">
+          <div class="header">
+            <div class="title">
+              <span class="label">DOM Tree</span>
+            </div>
+            <div id="tree-meta" class="tree-meta" aria-live="polite"></div>
+          </div>
+          <div id="tree-container" class="tree-container">
+            <div class="tree-empty">Click “Generate Tree” to visualize your DOM.</div>
+          </div>
+        </div>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

@@ -1,8 +1,8 @@
 import "./style.css";
-import { select } from "d3";
 
 const HTML_KEY = "dom-sim:html";
 const CSS_KEY = "dom-sim:css";
+const GENERATE_EVENT = "dom-sim:generate";
 
 document
   .querySelectorAll<HTMLInputElement>('input[data-dom-sim-temp-file="1"]')
@@ -24,11 +24,202 @@ window.addEventListener(
   { capture: true }
 );
 
-const htmlInput = select<HTMLTextAreaElement, unknown>("#html-input");
-const cssInput = select<HTMLTextAreaElement, unknown>("#css-input");
+const htmlInput = document.querySelector<HTMLTextAreaElement>("#html-input");
+const cssInput = document.querySelector<HTMLTextAreaElement>("#css-input");
 
-htmlInput.property("value", localStorage.getItem(HTML_KEY) ?? "");
-cssInput.property("value", localStorage.getItem(CSS_KEY) ?? "");
+if (htmlInput) htmlInput.value = localStorage.getItem(HTML_KEY) ?? "";
+if (cssInput) cssInput.value = localStorage.getItem(CSS_KEY) ?? "";
+
+type GenerateEventDetail = {
+  html: string;
+  css: string;
+};
+
+const generateButton = document.querySelector<HTMLButtonElement>("#generate-btn");
+const treeContainer = document.querySelector<HTMLElement>("#tree-container");
+const treeMeta = document.querySelector<HTMLElement>("#tree-meta");
+
+type TreeNode = ElementTreeNode | TextTreeNode;
+
+type ElementTreeNode = {
+  type: "element";
+  tag: string;
+  id: string;
+  classes: string[];
+  children: TreeNode[];
+};
+
+type TextTreeNode = {
+  type: "text";
+  text: string;
+};
+
+function normalizeTextNodeValue(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function elementToTree(element: Element): ElementTreeNode {
+  const children: TreeNode[] = [];
+  element.childNodes.forEach((node) => {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      children.push(elementToTree(node as Element));
+      return;
+    }
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      const normalized = normalizeTextNodeValue(node.textContent ?? "");
+      if (normalized) children.push({ type: "text", text: normalized });
+    }
+  });
+
+  return {
+    type: "element",
+    tag: element.tagName.toLowerCase(),
+    id: (element as HTMLElement).id ?? "",
+    classes: [...element.classList],
+    children
+  };
+}
+
+function countTreeNodes(node: TreeNode) {
+  let elements = 0;
+  let texts = 0;
+
+  const walk = (n: TreeNode) => {
+    if (n.type === "text") {
+      texts += 1;
+      return;
+    }
+    elements += 1;
+    n.children.forEach(walk);
+  };
+
+  walk(node);
+  return { elements, texts, total: elements + texts };
+}
+
+function truncate(value: string, maxLen: number) {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function clearElement(el: Element) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function createElementToken(
+  className: string,
+  text: string
+): HTMLSpanElement {
+  const span = document.createElement("span");
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
+function createElementRow(node: ElementTreeNode): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(createElementToken("tree-tag", node.tag));
+  if (node.id) frag.appendChild(createElementToken("tree-id", `#${node.id}`));
+  node.classes.forEach((cls) => {
+    frag.appendChild(createElementToken("tree-class", `.${cls}`));
+  });
+  return frag;
+}
+
+function renderTreeNode(node: TreeNode, depth: number): HTMLLIElement {
+  const li = document.createElement("li");
+
+  if (node.type === "text") {
+    const row = document.createElement("div");
+    row.className = "tree-row tree-text";
+    row.textContent = `“${truncate(node.text, 120)}”`;
+    li.appendChild(row);
+    return li;
+  }
+
+  if (node.children.length > 0) {
+    const details = document.createElement("details");
+    details.open = depth <= 1;
+
+    const summary = document.createElement("summary");
+    summary.className = "tree-row tree-summary";
+    summary.appendChild(createElementRow(node));
+
+    const ul = document.createElement("ul");
+    node.children.forEach((child) => {
+      ul.appendChild(renderTreeNode(child, depth + 1));
+    });
+
+    details.appendChild(summary);
+    details.appendChild(ul);
+    li.appendChild(details);
+    return li;
+  }
+
+  const row = document.createElement("div");
+  row.className = "tree-row tree-leaf";
+  row.appendChild(createElementRow(node));
+  li.appendChild(row);
+  return li;
+}
+
+function renderTree(html: string) {
+  if (!treeContainer) return;
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const rootNode = elementToTree(doc.body);
+  const counts = countTreeNodes(rootNode);
+
+  if (treeMeta) {
+    treeMeta.textContent = `Nodes: ${counts.total} • Elements: ${counts.elements} • Text: ${counts.texts}`;
+  }
+
+  clearElement(treeContainer);
+  const ul = document.createElement("ul");
+  ul.className = "dom-tree";
+  ul.appendChild(renderTreeNode(rootNode, 0));
+  treeContainer.appendChild(ul);
+}
+
+function getEditorValues() {
+  return {
+    html: htmlInput?.value ?? "",
+    css: cssInput?.value ?? ""
+  };
+}
+
+function canGenerate(html: string) {
+  return html.trim().length > 0;
+}
+
+function syncGenerateButtonState() {
+  if (!generateButton) return;
+  const { html } = getEditorValues();
+  generateButton.disabled = !canGenerate(html);
+}
+
+generateButton?.addEventListener("click", () => {
+  const { html, css } = getEditorValues();
+  if (!canGenerate(html)) return;
+
+  document.dispatchEvent(
+    new CustomEvent<GenerateEventDetail>(GENERATE_EVENT, {
+      detail: { html, css }
+    })
+  );
+});
+
+document.addEventListener(GENERATE_EVENT, (event) => {
+  const { html } = (event as CustomEvent<GenerateEventDetail>).detail ?? {
+    html: "",
+    css: ""
+  };
+  if (!canGenerate(html)) return;
+  renderTree(html);
+});
+
+syncGenerateButtonState();
 
 function setTextareaValue(
   textarea: HTMLTextAreaElement,
@@ -37,18 +228,19 @@ function setTextareaValue(
 ) {
   textarea.value = value;
   localStorage.setItem(storageKey, value);
+  syncGenerateButtonState();
 }
 
-htmlInput.on("input", (event) => {
-  const target = event.currentTarget as HTMLTextAreaElement | null;
-  if (!target) return;
-  localStorage.setItem(HTML_KEY, target.value);
+htmlInput?.addEventListener("input", () => {
+  if (!htmlInput) return;
+  localStorage.setItem(HTML_KEY, htmlInput.value);
+  syncGenerateButtonState();
 });
 
-cssInput.on("input", (event) => {
-  const target = event.currentTarget as HTMLTextAreaElement | null;
-  if (!target) return;
-  localStorage.setItem(CSS_KEY, target.value);
+cssInput?.addEventListener("input", () => {
+  if (!cssInput) return;
+  localStorage.setItem(CSS_KEY, cssInput.value);
+  syncGenerateButtonState();
 });
 
 type DropTargetConfig = {
